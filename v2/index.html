@@ -1,0 +1,736 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta name="x-poe-datastore-behavior" content="local_only">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OGS Defect Logger v1.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0; padding: 0; background: #f1f5f9; color: #1e293b;
+  }
+  header {
+    background: #0f172a; color: #fff; padding: 16px; text-align: center;
+  }
+  header h1 { margin: 0; font-size: 1.25rem; }
+  .container { max-width: 900px; margin: 0 auto; padding: 12px; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  }
+  .card h2 { font-size: 1rem; margin: 0 0 12px; color: #0f172a; }
+  
+  /* Customization Controls */
+  .settings-row { display: flex; gap: 15px; margin-top: 15px; align-items: center; flex-wrap: wrap; }
+  .settings-row label { font-size: 0.85rem; font-weight: 600; color: #334155; }
+  .settings-row input[type="color"] { width: 40px; height: 40px; border: none; cursor: pointer; padding: 0; border-radius: 4px; }
+  .settings-row input[type="range"] { flex-grow: 1; min-width: 180px; }
+
+  label.field { display:block; font-size:.85rem; font-weight:600; margin-bottom:6px; color:#334155; }
+  input[type=file], textarea, input[type=text] {
+    width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;
+    font-size:.95rem; font-family:inherit;
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  .plan-wrap {
+    position: relative; width: 100%; border: 2px dashed #cbd5e1; border-radius: 8px;
+    overflow: hidden; background: #f8fafc; min-height: 200px;
+    display:flex; align-items:center; justify-content:center; touch-action: manipulation;
+  }
+  .plan-wrap img { display:block; width:100%; height:auto; cursor: crosshair; }
+  .placeholder { color:#94a3b8; padding:40px 10px; text-align:center; }
+  
+  /* Google Map Teardrop Pin styling */
+  .pin {
+    position:absolute; 
+    color:#fff; border-radius:50% 50% 50% 0;
+    transform: rotate(-45deg); display:flex; align-items:center; justify-content:center;
+    font-weight:700; box-shadow:-2px 2px 4px rgba(0,0,0,.4);
+    cursor:pointer; border:2px solid #fff;
+  }
+  .pin span { transform: rotate(45deg); }
+  
+  /* Active pin styling */
+  .pin.active { box-shadow: -2px 2px 0 3px #0f172a; z-index:5; border-color: #f8fafc; }
+  
+  button {
+    cursor:pointer; border:none; border-radius:8px; padding:11px 16px;
+    font-size:.95rem; font-weight:600;
+  }
+  .btn-primary { background:#2563eb; color:#fff; width:100%; }
+  .btn-primary:disabled { background:#94a3b8; cursor:not-allowed; }
+  .btn-export { background:#16a34a; color:#fff; width:100%; }
+  .selected-info { font-size:.9rem; margin-bottom:10px; padding:8px 12px;
+    background:#eff6ff; border-radius:8px; color:#1e40af; }
+  .preview-thumb { max-width:120px; border-radius:6px; margin-top:8px; border:1px solid #cbd5e1; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+  th { background:#f1f5f9; color:#475569; }
+  td img { max-width:60px; border-radius:4px; }
+  .del-btn { background:#fee2e2; color:#b91c1c; padding:5px 9px; font-size:.8rem; }
+  .edit-btn { background:#e0f2fe; color:#0369a1; padding:5px 9px; font-size:.8rem; margin-right:6px; }
+  .empty-row td { text-align:center; color:#94a3b8; padding:20px; }
+  .hint { font-size:.8rem; color:#64748b; margin-top:4px; }
+  .field-group { margin-bottom:14px; }
+  .inline-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .status { font-size:.85rem; color:#64748b; margin-top:6px; }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.5);
+    display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
+  }
+  .modal {
+    background:#fff; border-radius:12px; padding:16px; width:100%; max-width:520px;
+    box-shadow: 0 10px 25px rgba(0,0,0,.2);
+  }
+  .modal h3 { margin:0 0 10px; font-size:1rem; color:#0f172a; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+  .btn-muted { background:#e2e8f0; color:#0f172a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏗️ OGS Defect Logger v1.0</h1>
+</header>
+
+<div class="container">
+
+  <!-- Project Info & Customizer -->
+  <div class="card">
+    <h2>Project Info & Settings</h2>
+    
+    <div class="field-group">
+      <label class="field">Site Location / Project Name (Chinese Supported)</label>
+      <input type="text" id="siteLocationInput" placeholder="e.g. Tower A, Level 4">
+    </div>
+
+    <div class="settings-row">
+      <label>Pin Color:</label>
+      <input type="color" id="pinColorInput" value="#dc2626">
+      <label>Size:</label>
+      <input type="range" id="pinSizeInput" min="20" max="60" value="32">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Upload Floor Plan (JPG or PDF)</h2>
+    <input type="file" id="planInput" accept="image/*,application/pdf">
+    <div class="hint">Tap on the plan below to drop a numbered defect pin.</div>
+    <div class="plan-wrap" id="planWrap" style="margin-top:12px;">
+      <div class="placeholder" id="placeholder">Upload a plan to start</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Defect Details</h2>
+    <div class="selected-info" id="selectedInfo">Selected Pin: <strong>None</strong> — tap the plan to add one.</div>
+
+    <div class="field-group">
+      <label class="field">Defect Remark (Chinese Supported)</label>
+      <textarea id="remarkInput" placeholder="Describe the defect..."></textarea>
+    </div>
+
+    <div class="field-group">
+      <label class="field">Attach Photo (Camera or Library)</label>
+      <input type="file" id="photoInput" accept="image/*">
+      <img id="photoPreview" class="preview-thumb" style="display:none;">
+    </div>
+
+    <button class="btn-primary" id="saveBtn" disabled="">💾 Save Defect</button>
+  </div>
+
+  <div class="card">
+    <h2>Defect Log</h2>
+    <table>
+      <thead>
+        <tr><th>Pin</th><th>Remarks</th><th>Photo</th><th></th></tr>
+      </thead>
+      <tbody id="logBody">
+        <tr class="empty-row"><td colspan="4">No defects logged yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="inline-row">
+      <label style="font-size:.85rem;font-weight:600;color:#334155;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="compressPdf"> Compress PDF
+      </label>
+      <span class="status" id="exportStatus"></span>
+    </div>
+    <button class="btn-export" id="exportBtn">📄 Export to A4 PDF</button>
+  </div>
+
+</div>
+
+<!-- Modal: Add / Edit Defect -->
+<div class="modal-backdrop" id="defectModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Defect</h3>
+    <div class="field-group">
+      <label class="field">Defect Remark (Chinese Supported)</label>
+      <textarea id="modalRemark" placeholder="Describe the defect..."></textarea>
+    </div>
+    <div class="field-group">
+      <label class="field">Attach Photo (Camera or Library)</label>
+      <input type="file" id="modalPhotoInput" accept="image/*">
+      <img id="modalPhotoPreview" class="preview-thumb" style="display:none;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-muted" id="modalCancel">Cancel</button>
+      <button class="btn-primary" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let planImageDataURL = null;   
+  let defects = [];              
+  let selectedId = null;
+  let pinCounter = 0;
+  let pendingPhoto = null;       
+  let modalPendingPhoto = null;
+
+  const planInput = document.getElementById('planInput');
+  const planWrap = document.getElementById('planWrap');
+  const placeholder = document.getElementById('placeholder');
+  const remarkInput = document.getElementById('remarkInput');
+  const photoInput = document.getElementById('photoInput');
+  const photoPreview = document.getElementById('photoPreview');
+  const saveBtn = document.getElementById('saveBtn');
+  const selectedInfo = document.getElementById('selectedInfo');
+  const logBody = document.getElementById('logBody');
+  const exportBtn = document.getElementById('exportBtn');
+  const pinColorInput = document.getElementById('pinColorInput');
+  const pinSizeInput = document.getElementById('pinSizeInput');
+  const siteLocationInput = document.getElementById('siteLocationInput');
+  const compressPdf = document.getElementById('compressPdf');
+  const exportStatus = document.getElementById('exportStatus');
+
+  // Modal elements
+  const defectModal = document.getElementById('defectModal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalRemark = document.getElementById('modalRemark');
+  const modalPhotoInput = document.getElementById('modalPhotoInput');
+  const modalPhotoPreview = document.getElementById('modalPhotoPreview');
+  const modalCancel = document.getElementById('modalCancel');
+  const modalSave = document.getElementById('modalSave');
+
+  // Dynamically redraw pins when settings change
+  pinColorInput.addEventListener('input', () => { renderPins(); renderTable(); });
+  pinSizeInput.addEventListener('input', renderPins);
+
+  // ---------- Upload floor plan ----------
+  planInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.type === 'application/pdf') {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      planImageDataURL = canvas.toDataURL('image/jpeg', 0.9);
+    } else {
+      planImageDataURL = await fileToDataURL(file);
+    }
+    defects = [];
+    selectedId = null;
+    pinCounter = 0;
+    renderPlan();
+    renderTable();
+    refreshSelectedUI();
+  });
+
+  function fileToDataURL(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  // ---------- Render the plan + pins ----------
+  function renderPlan() {
+    planWrap.innerHTML = '';
+    if (!planImageDataURL) {
+      planWrap.appendChild(placeholder);
+      return;
+    }
+    const img = document.createElement('img');
+    img.src = planImageDataURL;
+    img.id = 'planImg';
+    img.addEventListener('click', onPlanClick);
+    planWrap.appendChild(img);
+    renderPins();
+  }
+
+  function onPlanClick(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    pinCounter++;
+    const defect = { id: pinCounter, x, y, remark: '', photo: null };
+
+    // Keep all records
+    defects.push(defect);
+    selectedId = defect.id;
+
+    renderPins();
+    renderTable();
+    refreshSelectedUI();
+
+    // Prompt for remark/photo immediately
+    openModal('add');
+  }
+
+  function renderPins() {
+    planWrap.querySelectorAll('.pin').forEach(p => p.remove());
+    const pSize = parseInt(pinSizeInput.value);
+    const pColor = pinColorInput.value;
+
+    defects.forEach(d => {
+      const pin = document.createElement('div');
+      pin.className = 'pin' + (d.id === selectedId ? ' active' : '');
+      pin.style.left = d.x + '%';
+      pin.style.top = d.y + '%';
+      
+      pin.style.width = pSize + 'px';
+      pin.style.height = pSize + 'px';
+      pin.style.marginLeft = -(pSize / 2) + 'px';
+      pin.style.marginTop = -pSize + 'px';
+      pin.style.backgroundColor = pColor; 
+      pin.style.fontSize = Math.max(10, pSize * 0.4) + 'px';
+
+      pin.innerHTML = '<span>' + d.id + '</span>';
+      pin.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        selectedId = d.id;
+        renderPins();
+        refreshSelectedUI();
+      });
+      planWrap.appendChild(pin);
+    });
+  }
+
+  // ---------- Selected pin form ----------
+  function refreshSelectedUI() {
+    const d = defects.find(x => x.id === selectedId);
+    if (!d) {
+      selectedInfo.innerHTML = 'Selected Pin: <strong>None</strong> — tap the plan to add one.';
+      remarkInput.value = '';
+      photoPreview.style.display = 'none';
+      photoInput.value = '';
+      pendingPhoto = null;
+      saveBtn.disabled = true;
+      return;
+    }
+    selectedInfo.innerHTML = 'Selected Pin: <strong>#' + d.id + '</strong>';
+    remarkInput.value = d.remark || '';
+    pendingPhoto = d.photo;
+    if (d.photo) {
+      photoPreview.src = d.photo;
+      photoPreview.style.display = 'block';
+    } else {
+      photoPreview.style.display = 'none';
+    }
+    photoInput.value = '';
+    saveBtn.disabled = false;
+  }
+
+  photoInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pendingPhoto = await compressImage(file, 1000, 0.8);
+    photoPreview.src = pendingPhoto;
+    photoPreview.style.display = 'block';
+  });
+
+  function compressImage(file, maxDim, quality) {
+    return new Promise((res) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > height && width > maxDim) {
+            height = height * maxDim / width; width = maxDim;
+          } else if (height > maxDim) {
+            width = width * maxDim / height; height = maxDim;
+          }
+          const c = document.createElement('canvas');
+          c.width = width; c.height = height;
+          c.getContext('2d').drawImage(img, 0, 0, width, height);
+          res(c.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function reencodeDataUrl(dataUrl, maxDim, quality) {
+    return new Promise((res) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = height * maxDim / width; width = maxDim;
+        } else if (height > maxDim) {
+          width = width * maxDim / height; height = maxDim;
+        }
+        const c = document.createElement('canvas');
+        c.width = width; c.height = height;
+        c.getContext('2d').drawImage(img, 0, 0, width, height);
+        res(c.toDataURL('image/jpeg', quality));
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  saveBtn.addEventListener('click', () => {
+    const d = defects.find(x => x.id === selectedId);
+    if (!d) return;
+    d.remark = remarkInput.value.trim();
+    d.photo = pendingPhoto;
+    renderTable();
+    alertSaved();
+  });
+
+  function alertSaved() {
+    const orig = saveBtn.textContent;
+    saveBtn.textContent = '✓ Saved!';
+    saveBtn.style.background = '#16a34a';
+    setTimeout(() => { saveBtn.textContent = orig; saveBtn.style.background = ''; }, 1200);
+  }
+
+  // ---------- Modal logic ----------
+  function openModal(mode) {
+    const d = defects.find(x => x.id === selectedId);
+    if (!d) return;
+
+    modalTitle.textContent = mode === 'edit' ? 'Edit Defect' : 'Add Defect';
+    modalRemark.value = d.remark || '';
+    modalPendingPhoto = d.photo || null;
+
+    if (d.photo) {
+      modalPhotoPreview.src = d.photo;
+      modalPhotoPreview.style.display = 'block';
+    } else {
+      modalPhotoPreview.style.display = 'none';
+    }
+    modalPhotoInput.value = '';
+    defectModal.style.display = 'flex';
+  }
+
+  function closeModal() {
+    defectModal.style.display = 'none';
+  }
+
+  modalCancel.addEventListener('click', () => {
+    closeModal();
+  });
+
+  modalPhotoInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    modalPendingPhoto = await compressImage(file, 1000, 0.8);
+    modalPhotoPreview.src = modalPendingPhoto;
+    modalPhotoPreview.style.display = 'block';
+  });
+
+  modalSave.addEventListener('click', () => {
+    const d = defects.find(x => x.id === selectedId);
+    if (!d) return;
+    d.remark = modalRemark.value.trim();
+    d.photo = modalPendingPhoto;
+
+    // Sync to main form
+    remarkInput.value = d.remark || '';
+    pendingPhoto = d.photo;
+    if (d.photo) {
+      photoPreview.src = d.photo;
+      photoPreview.style.display = 'block';
+    } else {
+      photoPreview.style.display = 'none';
+    }
+
+    renderTable();
+    closeModal();
+  });
+
+  // ---------- Defect log table ----------
+  function renderTable() {
+    if (defects.length === 0) {
+      logBody.innerHTML = '<tr class="empty-row"><td colspan="4">No defects logged yet.</td></tr>';
+      return;
+    }
+    logBody.innerHTML = '';
+    const pColor = pinColorInput.value;
+
+    defects.forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td><div style="width:24px; height:24px; border-radius:50%; background:${pColor}; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px;">${d.id}</div></td>` +
+        '<td>' + (d.remark ? escapeHtml(d.remark) : '<em style="color:#94a3b8">—</em>') + '</td>' +
+        '<td>' + (d.photo ? '<img src="' + d.photo + '">' : '<em style="color:#94a3b8">No photo</em>') + '</td>' +
+        '<td><button class="edit-btn" data-id="' + d.id + '">Edit</button><button class="del-btn" data-id="' + d.id + '">Delete</button></td>';
+      logBody.appendChild(tr);
+    });
+    logBody.querySelectorAll('.del-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = parseInt(b.dataset.id);
+        defects = defects.filter(x => x.id !== id);
+        if (selectedId === id) selectedId = null;
+        renderPins(); renderTable(); refreshSelectedUI();
+      });
+    });
+    logBody.querySelectorAll('.edit-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = parseInt(b.dataset.id);
+        selectedId = id;
+        renderPins();
+        refreshSelectedUI();
+        openModal('edit');
+      });
+    });
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c =>
+      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  function loadImg(src) {
+    return new Promise((res) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.src = src;
+    });
+  }
+
+  // ---------- Correct Proportional Pin Sizing for PDF ----------
+  async function buildAnnotatedPlan(quality) {
+    const img = await loadImg(planImageDataURL);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    const planImgElement = document.getElementById('planImg');
+    const visualWidth = planImgElement ? planImgElement.clientWidth : 800;
+    const uiPinSize = parseInt(pinSizeInput.value);
+    
+    const radiusRatio = (uiPinSize / 2) / visualWidth;
+    const r = canvas.width * radiusRatio; 
+    const pColor = pinColorInput.value;
+
+    defects.forEach(d => {
+      const cx = (d.x / 100) * canvas.width;
+      const cy = (d.y / 100) * canvas.height;
+      
+      const cyCenter = cy - r * 1.414; 
+      ctx.beginPath();
+      ctx.arc(cx, cyCenter, r, Math.PI * 0.25, Math.PI * 0.75, true);
+      ctx.lineTo(cx, cy); 
+      ctx.closePath();
+      
+      ctx.fillStyle = pColor;
+      ctx.fill();
+      ctx.lineWidth = r * 0.15;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold ' + (r * 1.1) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(d.id), cx, cyCenter);
+    });
+    return canvas.toDataURL('image/jpeg', quality);
+  }
+
+  // ---------- Chinese Character PDF Hack updated for styling ----------
+  function createChineseTextCanvas(text, pdfMaxWidth, fontSize = 28, fontColor = '#334155') {
+      const scale = 4; 
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const fontStr = `normal ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+      ctx.font = fontStr;
+      
+      const maxWidthPx = pdfMaxWidth * scale;
+      const paragraphs = text.split('\n');
+      let lines = [];
+      
+      paragraphs.forEach(p => {
+          const tokens = p.match(/[\u4e00-\u9fa5]|[\w.,!?()'"-]+|\s/g) || [p];
+          let currentLine = '';
+          tokens.forEach(token => {
+              if (token === '\r') return;
+              if (ctx.measureText(currentLine + token).width > maxWidthPx && currentLine !== '') {
+                  lines.push(currentLine);
+                  currentLine = token.trimStart();
+              } else {
+                  currentLine += token;
+              }
+          });
+          if (currentLine) lines.push(currentLine);
+      });
+      if (lines.length === 0) lines.push("(No remark)");
+
+      const lineHeight = fontSize * 1.4;
+      canvas.width = maxWidthPx;
+      canvas.height = lines.length * lineHeight + 10; 
+      
+      const ctx2 = canvas.getContext('2d');
+      ctx2.font = fontStr;
+      ctx2.fillStyle = fontColor;
+      ctx2.textBaseline = 'top';
+      
+      lines.forEach((line, index) => {
+        ctx2.fillText(line, 0, index * lineHeight + 5);
+      });
+      
+      return {
+        dataUrl: canvas.toDataURL('image/png', 1.0),
+        pdfWidth: canvas.width / scale,
+        pdfHeight: canvas.height / scale
+      };
+  }
+
+  // ---------- Export to A4 PDF ----------
+  exportBtn.addEventListener('click', async () => {
+    if (!planImageDataURL) { 
+      exportStatus.textContent = 'Please upload a floor plan first.';
+      return;
+    }
+
+    exportBtn.disabled = true;
+    exportBtn.textContent = 'Generating PDF...';
+    exportStatus.textContent = '';
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pageW = 210, pageH = 297, margin = 15;
+      const usableW = pageW - margin * 2;
+      let y = margin;
+
+      const useCompress = compressPdf.checked;
+      const planQuality = useCompress ? 0.6 : 0.85;
+      const photoQuality = useCompress ? 0.6 : 0.85;
+      const photoMaxDim = useCompress ? 800 : 1200;
+
+      // ----- Title -----
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('OGS Defect Report v1.0', margin, y + 6);
+      y += 12;
+
+      // ----- Site Location / Header Info -----
+      const siteLoc = siteLocationInput.value.trim() || 'N/A';
+      const now = new Date();
+      const headerText = `Date / 日期: ${now.toLocaleString()}\nLocation / 地點: ${siteLoc}\nTotal Defects / 總缺陷數: ${defects.length}`;
+      
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      
+      let safeLocName = siteLoc !== 'N/A' ? siteLoc : 'UnknownLocation';
+      safeLocName = safeLocName.replace(/[\/\\?%*:|"<>]/g, '-'); 
+      
+      const fileNameStr = `OGS.Defect.Report.${safeLocName}.(${yy}.${mm}.${dd}-${hh}${min}).pdf`;
+
+      const headerImgObj = createChineseTextCanvas(headerText, usableW, 20, '#64748b'); 
+      doc.addImage(headerImgObj.dataUrl, 'PNG', margin, y, headerImgObj.pdfWidth, headerImgObj.pdfHeight);
+      
+      y += headerImgObj.pdfHeight + 4;
+      doc.setDrawColor(200);
+      doc.line(margin, y, pageW - margin, y);
+      y += 6;
+
+      const planData = await buildAnnotatedPlan(planQuality);
+      const planImg = await loadImg(planData);
+      let pw = usableW;
+      let ph = (planImg.naturalHeight / planImg.naturalWidth) * pw;
+      const maxPlanH = 140;
+      if (ph > maxPlanH) { ph = maxPlanH; pw = (planImg.naturalWidth / planImg.naturalHeight) * ph; }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Floor Plan', margin, y + 4);
+      y += 8;
+      const planX = margin + (usableW - pw) / 2;
+      doc.addImage(planData, 'JPEG', planX, y, pw, ph);
+      y += ph + 8;
+
+      for (const d of defects) {
+        let photoH = 0, photoW = 0;
+        let photoData = null;
+        if (d.photo) {
+          photoData = useCompress ? await reencodeDataUrl(d.photo, photoMaxDim, photoQuality) : d.photo;
+          const photoImg = await loadImg(photoData);
+          photoW = 70;
+          photoH = (photoImg.naturalHeight / photoImg.naturalWidth) * photoW;
+          if (photoH > 60) { photoH = 60; photoW = (photoImg.naturalWidth / photoImg.naturalHeight) * photoH; }
+        }
+        
+        const textImgObj = createChineseTextCanvas(d.remark || '(No remark)', usableW - 6, 28, '#334155');
+        const textH = textImgObj.pdfHeight + 8;
+        const blockH = Math.max(textH, photoH) + 14;
+
+        if (y + blockH > pageH - margin) {
+          doc.addPage();
+          y = margin;
+        }
+
+        doc.setFillColor(15, 23, 42);
+        doc.rect(margin, y, usableW, 8, 'F');
+        doc.setTextColor(255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('Defect Pin #' + d.id, margin + 3, y + 5.5);
+        doc.setTextColor(0);
+        y += 12;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text('Remark:', margin, y);
+        
+        doc.addImage(textImgObj.dataUrl, 'PNG', margin, y + 2, textImgObj.pdfWidth, textImgObj.pdfHeight);
+
+        if (photoData) {
+          const px = pageW - margin - photoW;
+          doc.addImage(photoData, 'JPEG', px, y, photoW, photoH);
+        }
+
+        y += blockH;
+        doc.setDrawColor(220);
+        doc.line(margin, y - 4, pageW - margin, y - 4);
+      }
+
+      doc.save(fileNameStr);
+      
+    } catch (err) {
+      console.error(err);
+      alert('Error generating PDF: ' + err.message);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = '📄 Export to A4 PDF';
+    }
+  });
+</script>
+</body></html>
